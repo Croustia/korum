@@ -259,7 +259,10 @@ const S = {
 const moi = () => S.membre?.courriel || "";
 const niv = () => NIVEAU[S.membre?.role] || 0;
 const estAdmin = () => niv() >= 4, estGestion = () => niv() >= 3, estExecutif = () => niv() >= 2;
-const nomDe = c => (S.membres.find(m => m.courriel === c)?.nom) || c || "";
+const TOUS = "*";
+const nomDe = c => c===TOUS ? "Tout le monde" : (S.membres.find(m => m.courriel === c)?.nom) || c || "";
+const actifs = () => S.membres.filter(m => m.actif!==false);
+const faitsDe = t => (t.faits||[]).filter(c => actifs().some(m => m.courriel===c));
 const etq = n => S.config.etiquettes.find(e => e.nom === n) || { nom:n, couleur:"#9a9a9a" };
 const aujourdhui = () => new Date().toISOString().slice(0,10);
 
@@ -399,10 +402,11 @@ function korumDemo(){
   set("calendrier/e1", { date:jour(24), heure:"17:00", titre:"5 à 7 des membres", type:"evenement", lieu:"Bistro du centre-ville" });
   set("calendrier/e2", { date:jour(52), heure:"18:00", titre:"Gala annuel", type:"evenement", lieu:"Grande salle municipale" });
   const t = (id, d) => set("taches/"+id, { archive:false, nbCommentaires:0, rencontreId:"", pointOdj:"", creePar:"marie@demo.korum", description:"", echeance:"", ...d });
-  t("t1", { titre:"Trouver un traiteur pour le Gala", etiquette:"Événements", statut:"a_faire", responsable:"", description:"Environ 120 personnes, cocktail dînatoire.", rencontreId:"r0", pointOdj:"Gala annuel" });
+  t("t1", { soumission:true, titre:"Trouver un traiteur pour le Gala", etiquette:"Événements", statut:"a_faire", responsable:"", description:"Environ 120 personnes, cocktail dînatoire.", rencontreId:"r0", pointOdj:"Gala annuel" });
   t("t2", { titre:"Préparer le budget de l'an prochain", etiquette:"Financement", statut:"a_faire", responsable:moi, echeance:jour(9) });
   t("t3", { titre:"Réserver la salle pour le 5 à 7", etiquette:"Événements", statut:"en_cours", responsable:"luc@demo.korum", echeance:jour(5), nbCommentaires:1 });
   t("t4", { titre:"Envoyer les convocations de l'assemblée", etiquette:"CA", statut:"termine", responsable:"marie@demo.korum", termineLe:maintenant() });
+  t("t6", { titre:"Confirmer votre présence au gala", etiquette:"Événements", statut:"a_faire", responsable:"*", faits:["luc@demo.korum"], echeance:jour(10) });
   t("t5", { titre:"Mettre à jour la liste des partenaires", etiquette:"CA", statut:"a_faire", responsable:"sophie@demo.korum", echeance:jour(20) });
   set("taches/t3/commentaires/c1", { texte:"J'ai appelé le bistro, ils nous rappellent jeudi.", auteur:"luc@demo.korum", auteurNom:"Luc Gagnon", date:maintenant() });
   set("annonces/a1", { texte:"Les photos du dernier événement sont dans le dossier partagé.", auteur:"marie@demo.korum", auteurNom:"Marie Tremblay", date:maintenant(), epingle:false });
@@ -449,10 +453,15 @@ function boutonSoumission(o){
 /* ---------- Vue : Tâches ---------- */
 function carteTache(t, opts={}){
   const e = etq(t.etiquette); const mienne = t.responsable === moi();
+  const pourTous = t.responsable === TOUS;
   const boutons = [];
   if(t.statut !== "termine"){
     if(!t.responsable) boutons.push(`<button class="btn-v btn-s" data-act="prendre" data-id="${t.id}">Je prends</button>`);
     else if(mienne) boutons.push(`<button class="btn-s" data-act="retirer" data-id="${t.id}">Je me retire</button>`);
+    if(pourTous){
+      const fait = (t.faits||[]).includes(moi());
+      boutons.push(fait ? `<button class="btn-s" data-act="part" data-id="${t.id}">Annuler ma part</button>` : `<button class="btn-v btn-s" data-act="part" data-id="${t.id}">J'ai fait ma part</button>`);
+    }
     if(mienne || estExecutif()){
       if(t.statut==="a_faire") boutons.push(`<button class="btn-s" data-act="statut" data-id="${t.id}" data-s="en_cours">Commencer</button>`);
       boutons.push(`<button class="btn-v btn-s" data-act="statut" data-id="${t.id}" data-s="termine">Terminé</button>`);
@@ -464,7 +473,7 @@ function carteTache(t, opts={}){
     <div class="ligne">
       <div>
         <p class="titre-t">${esc(t.titre)}</p>
-        <p class="meta"><span class="point" style="background:${e.couleur}"></span>${esc(t.etiquette||"")}${t.responsable? " · "+esc(nomDe(t.responsable)) : " · personne"}${t.echeance? " · pour le "+fmtDate(t.echeance,true):""}${nbCom}</p>
+        <p class="meta"><span class="point" style="background:${e.couleur}"></span>${esc(t.etiquette||"")}${t.responsable? " · "+esc(nomDe(t.responsable)) : " · personne"}${pourTous? ` · ${faitsDe(t).length} sur ${actifs().length} ont fait leur part`:""}${t.echeance? " · pour le "+fmtDate(t.echeance,true):""}${nbCom}</p>
         ${renc && !opts.sansRenc ? `<p class="petit">Issue de : ${esc(renc.type)} du ${fmtDate(renc.date,true)}</p>`:""}
       </div>
       <button class="btn-s" data-act="ouvrir-tache" data-id="${t.id}" aria-label="Détails">Détails</button>
@@ -475,7 +484,7 @@ function carteTache(t, opts={}){
 function vueTaches(){
   const actives = S.taches.filter(t => !t.archive);
   const f = S.filtre;
-  const filtrees = actives.filter(t => f==="tous" ? true : f==="moi" ? t.responsable===moi() : t.etiquette===f);
+  const filtrees = actives.filter(t => f==="tous" ? true : f==="moi" ? (t.responsable===moi() || t.responsable===TOUS) : t.etiquette===f);
   const cols = STATUTS.map(([s,l]) => [l, filtrees.filter(t=>t.statut===s)]);
   const puces = [["tous","Toutes"],["moi","Mes tâches"], ...S.config.etiquettes.map(e=>[e.nom,e.nom])]
     .map(([v,l]) => `<button class="puce ${f===v?"actif":""}" data-act="filtre" data-v="${esc(v)}">${esc(l)}</button>`).join("");
@@ -699,7 +708,7 @@ const pied = (ok="Enregistrer", extra="") => `<div class="pied">${extra}<button 
 let onOk = null;
 
 function selectEtq(v){ return `<select id="f-etq">${S.config.etiquettes.map(e=>`<option ${e.nom===v?"selected":""}>${esc(e.nom)}</option>`).join("")}</select>`; }
-function selectMembre(v){ return `<select id="f-resp"><option value="">Personne (à prendre)</option>${S.membres.filter(m=>m.actif!==false).map(m=>`<option value="${esc(m.courriel)}" ${m.courriel===v?"selected":""}>${esc(m.nom||m.courriel)}</option>`).join("")}</select>`; }
+function selectMembre(v){ return `<select id="f-resp"><option value="">Personne (à prendre)</option><option value="*" ${v==="*"?"selected":""}>Tout le monde (chacun fait sa part)</option>${S.membres.filter(m=>m.actif!==false).map(m=>`<option value="${esc(m.courriel)}" ${m.courriel===v?"selected":""}>${esc(m.nom||m.courriel)}</option>`).join("")}</select>`; }
 
 function formTache(t={}, rencId="", point=""){
   const renc = rencId ? S.rencontres.find(r=>r.id===rencId) : null;
@@ -710,12 +719,14 @@ function formTache(t={}, rencId="", point=""){
     <label>Étiquette</label>${selectEtq(t.etiquette || renc?.type || "CA")}
     <label>Responsable</label>${selectMembre(t.responsable||"")}
     <label>Échéance (facultatif)</label><input type="date" id="f-date" value="${esc(t.echeance||"")}">
+    ${S.config.lienSoumission? `<label style="display:flex;align-items:center;gap:8px"><input type="checkbox" id="f-soum" style="width:auto" ${t.soumission?"checked":""}> Demander des soumissions pour cette tâche</label>
+    <p class="petit">Si coché, le bouton « Demander des soumissions » s'affiche dans les détails de la tâche.</p>`:""}
     <p class="erreur" id="f-err"></p>
     ${pied(t.id? "Enregistrer":"Créer", t.id? `<button class="btn-d" data-act="suppr-tache" data-id="${t.id}">Supprimer</button>`:"")}`);
   onOk = async () => {
     const titre = $("#f-titre").value.trim(); if(!titre){ $("#f-err").textContent="Le titre est obligatoire."; return; }
     const resp = $("#f-resp").value;
-    const data = { titre, description:$("#f-desc").value.trim(), etiquette:$("#f-etq").value, responsable:resp, echeance:$("#f-date").value, modifieLe:serverTimestamp() };
+    const data = { titre, description:$("#f-desc").value.trim(), etiquette:$("#f-etq").value, responsable:resp, echeance:$("#f-date").value, soumission: $("#f-soum") ? $("#f-soum").checked : !!t.soumission, modifieLe:serverTimestamp() };
     if(t.id) await updateDoc(doc(db,"taches",t.id), data);
     else await addDoc(collection(db,"taches"), { ...data, statut:"a_faire", rencontreId:rencId||t.rencontreId||"", pointOdj:point||"", creePar:moi(), creeLe:serverTimestamp(), archive:false, nbCommentaires:0 });
     fermer(); toast(t.id? "Tâche enregistrée":"Tâche créée");
@@ -727,8 +738,9 @@ async function detailTache(id){
   modal(`<h1>${esc(t.titre)}</h1>
     <p class="meta"><span class="point" style="background:${e.couleur}"></span>${esc(t.etiquette)} · ${STATUTS.find(s=>s[0]===t.statut)?.[1]} · ${t.responsable? esc(nomDe(t.responsable)) : "personne"}${t.echeance? " · pour le "+fmtDate(t.echeance,true):""}</p>
     ${t.description? `<p style="margin-top:10px;white-space:pre-wrap">${esc(t.description)}</p>`:""}
+    ${t.responsable===TOUS? `<div class="carte" style="margin-top:10px"><p class="titre-t">${faitsDe(t).length} sur ${actifs().length} ont fait leur part</p><p class="petit">Fait : ${esc(faitsDe(t).map(nomDe).join(", ")||"personne encore")}</p><p class="petit">Pas encore : ${esc(actifs().filter(m=>!faitsDe(t).includes(m.courriel)).map(m=>m.nom||m.courriel).join(", ")||"personne")}</p></div>`:""}
     ${t.pointOdj? `<p class="petit" style="margin-top:6px">Point d'ordre du jour : ${esc(t.pointOdj)}</p>`:""}
-    ${S.config.lienSoumission && t.statut!=="termine" ? `<div class="actions">${boutonSoumission({ nom:t.titre, details:t.description })}</div>`:""}
+    ${S.config.lienSoumission && t.soumission && t.statut!=="termine" ? `<div class="actions">${boutonSoumission({ nom:t.titre, details:t.description })}</div>`:""}
     <h2>Commentaires</h2><div id="coms" class="muet">Chargement…</div>
     <label>Ajouter un commentaire</label><textarea id="f-com" placeholder="Ex. : le devis est arrivé, il est dans le dossier partagé."></textarea>
     <div class="pied">${estExecutif()? `<button data-act="modif-tache" data-id="${t.id}">Modifier</button>`:""}<button data-act="fermer">Fermer</button><button class="btn-p" data-act="ok">Commenter</button></div>`);
@@ -849,6 +861,8 @@ const ACTIONS = {
   "modif-tache": d => { fermer(); formTache(S.taches.find(t=>t.id===d.id)); },
   "ouvrir-tache": d => detailTache(d.id),
   prendre: d => updateDoc(doc(db,"taches",d.id), { responsable:moi(), modifieLe:serverTimestamp() }).then(()=>toast("C'est à vous")).catch(e=>toast("Refusé : "+e.message)),
+  part: d => { const t = S.taches.find(x=>x.id===d.id); if(!t) return; const e = new Set(t.faits||[]); e.has(moi())? e.delete(moi()) : e.add(moi());
+    updateDoc(doc(db,"taches",d.id), { faits:[...e], modifieLe:serverTimestamp() }).then(()=>toast(e.has(moi())?"Merci !":"Retiré")).catch(err=>toast("Refusé : "+err.message)); },
   retirer: d => updateDoc(doc(db,"taches",d.id), { responsable:"", modifieLe:serverTimestamp() }).catch(e=>toast("Refusé : "+e.message)),
   statut: d => updateDoc(doc(db,"taches",d.id), { statut:d.s, modifieLe:serverTimestamp(), termineLe: d.s==="termine" ? serverTimestamp() : null }).then(()=>toast(d.s==="termine"?"Terminé":"Statut changé")).catch(e=>toast("Refusé : "+e.message)),
   "suppr-tache": async d => { if(!confirm("Supprimer cette tâche ?")) return; await deleteDoc(doc(db,"taches",d.id)); fermer(); toast("Tâche supprimée"); },
