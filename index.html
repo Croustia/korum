@@ -389,8 +389,8 @@ function korumDemo(){
     etiquettes:[{nom:"CA",couleur:"#1B5EA6",type:"comite"},{nom:"Événements",couleur:"#F5A800",type:"comite"},{nom:"Financement",couleur:"#8DC63F",type:"dossier"}],
     odjModele:DEPART.odj });
   set("membres/"+moi, { nom:"Vous", role:"admin", actif:true });
-  set("membres/marie@demo.korum", { nom:"Marie Tremblay", role:"gestion", actif:true, codeLuLe:jour(-60), declarationAnnee:new Date().getFullYear() });
-  set("membres/luc@demo.korum", { nom:"Luc Gagnon", role:"executif", actif:true, codeLuLe:jour(-90) });
+  set("membres/marie@demo.korum", { nom:"Marie Tremblay", titre:"Directrice générale", role:"gestion", actif:true, codeLuLe:jour(-60), declarationAnnee:new Date().getFullYear() });
+  set("membres/luc@demo.korum", { nom:"Luc Gagnon", titre:"Trésorier", role:"executif", actif:true, codeLuLe:jour(-90) });
   set("membres/sophie@demo.korum", { nom:"Sophie Bélanger", role:"membre", actif:true });
   const odj = ["Ouverture de la réunion","Lecture et adoption de l'ordre du jour","Adoption du procès-verbal de la dernière réunion","Budget de l'an prochain","Gala annuel","Suivi des finances","Correspondance","Varia","Prochaine rencontre","Levée de la réunion"];
   set("rencontres/r1", { type:"CA", date:jour(12), heure:"18:30", lieu:"Salle du conseil", ordreDuJour:odj, lienPV:"" });
@@ -583,7 +583,7 @@ function vueMembres(){
   return `<div class="ligne" style="margin-bottom:12px"><p class="muet">${S.membres.length} personne(s) avec accès.</p>
       ${estAdmin()? `<button class="btn-p btn-s" data-act="modif-membre">+ Ajouter</button>`:""}</div>
     ${S.membres.map(m => `<div class="carte ${m.actif===false?"fini":""}"><div class="ligne"><div>
-        <p class="titre-t">${esc(m.nom||m.courriel)} <span class="muet">· ${ROLES[m.role]||m.role}</span></p>
+        <p class="titre-t">${esc(m.nom||m.courriel)} <span class="muet">· ${esc(m.titre||"")}${m.titre?" · ":""}${ROLES[m.role]||m.role}</span></p>
         <p class="meta">${esc(m.courriel)}${m.actif===false? " · désactivé":""}</p>
         <p class="petit">Code d'éthique : ${m.codeLuLe? "lu le "+fmtDate(m.codeLuLe) : "pas encore lu"} · Déclaration d'intérêts ${an} : ${m.declarationAnnee===an? "reçue":"à recevoir"}</p></div>
         ${estAdmin()? `<button class="btn-s" data-act="modif-membre" data-id="${m.courriel}">Modifier</button>` : (m.declarationAnnee!==an? `<button class="btn-s" data-act="declaration" data-id="${m.courriel}">Déclaration reçue</button>`:"")}
@@ -807,7 +807,8 @@ function formMembre(m={}){
   modal(`<h1>${m.courriel? "Modifier l'accès":"Ajouter une personne"}</h1>
     <label>Courriel (celui de son compte Google, ou l'adresse où recevoir le lien de connexion)</label><input type="email" id="f-courriel" value="${esc(m.courriel||"")}" ${m.courriel?"disabled":""} placeholder="nom@exemple.ca">
     <label>Nom</label><input type="text" id="f-nom" value="${esc(m.nom||"")}">
-    <label>Rôle</label><select id="f-role">${Object.entries(ROLES).map(([v,l])=>`<option value="${v}" ${(m.role||"membre")===v?"selected":""}>${l}</option>`).join("")}</select>
+    <label>Titre (facultatif)</label><input type="text" id="f-titre" value="${esc(m.titre||"")}" placeholder="Ex. : Présidente, Directrice générale, Trésorier, Secrétaire">
+    <label>Rôle (niveau d'accès)</label><select id="f-role">${Object.entries(ROLES).map(([v,l])=>`<option value="${v}" ${(m.role||"membre")===v?"selected":""}>${l}</option>`).join("")}</select>
     <p class="petit">Membre : prend des tâches, commente, publie des annonces. Exécutif : crée et assigne les tâches. Gestion : rencontres, calendrier, documents. Admin : membres et historique.</p>
     <label style="display:flex;align-items:center;gap:8px"><input type="checkbox" id="f-actif" style="width:auto" ${m.actif===false?"":"checked"}> Accès actif</label>
     <label>Déclaration d'intérêts reçue pour</label><input type="text" id="f-decl" value="${esc(m.declarationAnnee||"")}" inputmode="numeric" placeholder="Ex. : ${new Date().getFullYear()}">
@@ -815,13 +816,13 @@ function formMembre(m={}){
     ${pied()}`);
   onOk = async () => { const courriel=(m.courriel||$("#f-courriel").value).trim().toLowerCase(); const nom=$("#f-nom").value.trim();
     if(!courriel.includes("@")||!nom){ $("#f-err").textContent="Courriel et nom sont obligatoires."; return; }
-    const data = { nom, role:$("#f-role").value, actif:$("#f-actif").checked, declarationAnnee:+$("#f-decl").value||null };
+    const data = { nom, titre:$("#f-titre").value.trim(), role:$("#f-role").value, actif:$("#f-actif").checked, declarationAnnee:+$("#f-decl").value||null };
     await setDoc(doc(db,"membres",courriel), data, { merge:true });
     fermer(); toast("Accès enregistré"); };
 }
 function menuMoi(){
   const m = S.membre;
-  modal(`<h1>${esc(m.nom||m.courriel)}</h1><p class="muet">${esc(m.courriel)} · ${ROLES[m.role]}</p>
+  modal(`<h1>${esc(m.nom||m.courriel)}</h1><p class="muet">${m.titre?esc(m.titre)+" · ":""}${esc(m.courriel)} · ${ROLES[m.role]}</p>
     <div class="actions" style="flex-direction:column;align-items:stretch;margin-top:16px">
       ${estGestion()? `<button data-act="vue" data-v="membres">Membres et déclarations d'intérêts</button>`:""}
       ${estGestion()? `<button data-act="vue" data-v="reglages">Réglages (nom, couleur, logo, étiquettes, ordre du jour)</button>`:""}
